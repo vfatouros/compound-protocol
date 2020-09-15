@@ -603,11 +603,9 @@ contract PctPool is LPTokenWrapper, IRewardDistributionRecipient {
     uint256 public rewardPerTokenStored;
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
-    address public devAddr;
 
     constructor(address pctAddress, address stakeTokenAddress) LPTokenWrapper(stakeTokenAddress) public {
         rewardDistribution = msg.sender;
-        devAddr = msg.sender;
         pct = IERC20(pctAddress);
     }
 
@@ -674,10 +672,8 @@ contract PctPool is LPTokenWrapper, IRewardDistributionRecipient {
         uint256 reward = earned(msg.sender);
         if (reward > 0) {
             rewards[msg.sender] = 0;
-            uint256 devFee = reward.mul(8).div(100);
-            pct.safeTransfer(devAddr, devFee);
-            pct.safeTransfer(msg.sender, reward.sub(devFee));
-            emit RewardPaid(msg.sender, reward.sub(devFee));
+            pct.safeTransfer(msg.sender, reward);
+            emit RewardPaid(msg.sender, reward);
         }
     }
 
