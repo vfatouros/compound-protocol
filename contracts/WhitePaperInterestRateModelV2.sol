@@ -5,15 +5,14 @@ import "./SafeMath.sol";
 import "../../openzeppelin-contracts/contracts/ownership/Ownable.sol";
 
 /**
-  * @title Compound's JumpRateModel Contract V2
-  * @author Compound (modified by Dharma Labs)
-  * @notice Version 2 modifies Version 1 by enabling updateable parameters.
-  * @notice This is updated from Version 2 to also be Ownable and have updatable blocksPerYear.
+  * @title Compound's WhitePaperInterestRateModel Contract
+  * @author Compound
+  * @notice The parameterized model described in section 2.4 of the original Compound Protocol whitepaper
   */
-contract JumpRateModelV2Stable1 is InterestRateModel, Ownable {
+contract WhitePaperInterestRateModel is InterestRateModel, Ownable {
     using SafeMath for uint;
 
-    event NewInterestParams(uint baseRatePerBlock, uint multiplierPerBlock, uint jumpMultiplierPerBlock, uint kink);
+    event NewInterestParams(uint baseRatePerBlock, uint multiplierPerBlock);
 
     /**
      * @notice The approximate number of blocks per year that is assumed by the interest rate model
@@ -31,35 +30,21 @@ contract JumpRateModelV2Stable1 is InterestRateModel, Ownable {
     uint public baseRatePerBlock;
 
     /**
-     * @notice The multiplierPerBlock after hitting a specified utilization point
-     */
-    uint public jumpMultiplierPerBlock;
-
-    /**
-     * @notice The utilization point at which the jump multiplier is applied
-     */
-    uint public kink;
-
-    /**
      * @notice Construct an interest rate model
      * @param baseRatePerYear The approximate target base APR, as a mantissa (scaled by 1e18)
      * @param multiplierPerYear The rate of increase in interest rate wrt utilization (scaled by 1e18)
-     * @param jumpMultiplierPerYear The multiplierPerBlock after hitting a specified utilization point
-     * @param kink_ The utilization point at which the jump multiplier is applied
      */
-    constructor(uint baseRatePerYear, uint multiplierPerYear, uint jumpMultiplierPerYear, uint kink_) public {
-        updateJumpRateModelInternal(baseRatePerYear,  multiplierPerYear, jumpMultiplierPerYear, kink_);
+    constructor(uint baseRatePerYear, uint multiplierPerYear) public {
+        updateRateModelInternal(baseRatePerYear, multiplierPerYear);
     }
 
     /**
      * @notice Update the parameters of the interest rate model (only callable by owner, i.e. Timelock)
      * @param baseRatePerYear The approximate target base APR, as a mantissa (scaled by 1e18)
      * @param multiplierPerYear The rate of increase in interest rate wrt utilization (scaled by 1e18)
-     * @param jumpMultiplierPerYear The multiplierPerBlock after hitting a specified utilization point
-     * @param kink_ The utilization point at which the jump multiplier is applied
      */
-    function updateJumpRateModel(uint baseRatePerYear, uint multiplierPerYear, uint jumpMultiplierPerYear, uint kink_) external onlyOwner {
-        updateJumpRateModelInternal(baseRatePerYear, multiplierPerYear, jumpMultiplierPerYear, kink_);
+    function updateRateModel(uint baseRatePerYear, uint multiplierPerYear) external onlyOwner {
+        updateRateModelInternal(baseRatePerYear, multiplierPerYear);
     }
 
     /**
@@ -94,15 +79,8 @@ contract JumpRateModelV2Stable1 is InterestRateModel, Ownable {
      * @return The borrow rate percentage per block as a mantissa (scaled by 1e18)
      */
     function getBorrowRate(uint cash, uint borrows, uint reserves) public view returns (uint) {
-        uint util = utilizationRate(cash, borrows, reserves);
-
-        if (util <= kink) {
-            return util.mul(multiplierPerBlock).div(1e18).add(baseRatePerBlock);
-        } else {
-            uint normalRate = kink.mul(multiplierPerBlock).div(1e18).add(baseRatePerBlock);
-            uint excessUtil = util.sub(kink);
-            return excessUtil.mul(jumpMultiplierPerBlock).div(1e18).add(normalRate);
-        }
+        uint ur = utilizationRate(cash, borrows, reserves);
+        return ur.mul(multiplierPerBlock).div(1e18).add(baseRatePerBlock);
     }
 
     /**
@@ -119,20 +97,17 @@ contract JumpRateModelV2Stable1 is InterestRateModel, Ownable {
         uint rateToPool = borrowRate.mul(oneMinusReserveFactor).div(1e18);
         return utilizationRate(cash, borrows, reserves).mul(rateToPool).div(1e18);
     }
+    
 
     /**
      * @notice Internal function to update the parameters of the interest rate model
      * @param baseRatePerYear The approximate target base APR, as a mantissa (scaled by 1e18)
      * @param multiplierPerYear The rate of increase in interest rate wrt utilization (scaled by 1e18)
-     * @param jumpMultiplierPerYear The multiplierPerBlock after hitting a specified utilization point
-     * @param kink_ The utilization point at which the jump multiplier is applied
      */
-    function updateJumpRateModelInternal(uint baseRatePerYear, uint multiplierPerYear, uint jumpMultiplierPerYear, uint kink_) internal {
+    function updateRateModelInternal(uint baseRatePerYear, uint multiplierPerYear) internal {
         baseRatePerBlock = baseRatePerYear.div(blocksPerYear);
-        multiplierPerBlock = (multiplierPerYear.mul(1e18)).div(blocksPerYear.mul(kink_));
-        jumpMultiplierPerBlock = jumpMultiplierPerYear.div(blocksPerYear);
-        kink = kink_;
+        multiplierPerBlock = multiplierPerYear.div(blocksPerYear);
 
-        emit NewInterestParams(baseRatePerBlock, multiplierPerBlock, jumpMultiplierPerBlock, kink);
+        emit NewInterestParams(baseRatePerBlock, multiplierPerBlock);
     }
 }
